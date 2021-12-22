@@ -1,0 +1,219 @@
+#>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+##Windows Core Configuration
+#>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+# https://docs.microsoft.com/pt-br/windows-server/administration/server-core/server-core-administer#join-a-domain
+
+
+
+#Convert
+#https://docs.microsoft.com/en-us/archive/blogs/john_taylor/converting-from-server-2012-core-install-to-full-gui
+install-windowsfeature -name server-gui-mgmt-infra, server-gui-shell -source D:\sources\sxs
+
+#Set IP
+Get-NetIPInterface
+New-NetIPaddress -InterfaceIndex 15 -IPAddress 10.100.0.3 -PrefixLength 16 -DefaultGateway 10.100.0.1
+Set-DNSClientServerAddress –InterfaceIndex 15 -ServerAddresses 10.100.0.3
+
+#If you need to switch to using DHCP
+Set-DnsClientServerAddress –InterfaceIndex 12 –ResetServerAddresses.
+#Join Domainnet share
+Add-Computer
+#Rename Server
+Rename-Computer -ComputerName <new_name>.
+
+#format disk
+diskpart
+select disk 1
+attributes disk clear readonly
+online disk
+select disk 1
+clean
+convert gpt
+create partition primary
+format quick fs=ntfs label="data" unit=64k
+assign letter=E
+
+#Backup
+#Start Windows Server Backup
+wbadmin.msc
+“Wbadmin start backup -backupTarget:E:-allcritical –systemstate
+
+#>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+#ADRES FOREST RECOVERY
+#>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+#Check RID 500
+Get-ADUser -Filter * | where { $_.SID -like '*-500'}
+
+
+#Check User logged
+whoami /all
+whoami /groups
+
+#Reset Administrator Password
+net user administrator Password1 /Domain
+
+#NetShare
+net share
+
+#DFSRSYSVOLRestore.ps1:
+
+
+..\DFSRSysvolRestore.Ps1
+dir funcition:\
+Get-SysvolDFSRConf –server coredc12
+Set-AuthDFSRSysvol –server coredc12 –Step 1
+Set-AuthDFSRSysvol –server coredc12 –Step 2
+Get-SysvolDFSRConf –server coredc12
+#Restart the DFSR service.
+get-service -name dfsr
+stop-service -name dfsr
+start-service -name dfsr
+sc stop dfsr 
+sc start dfsr
+
+#FSMo Roles
+Get-ADForest | select SchemaMaster,DomainNamingMaster 
+Get-ADDomain | select PDCEmulator,RIDMaster,InfrastructureMaster
+#Transfer FSMo
+Move-ADDirectoryServerOperationMasterRole -Identity <Target-DC> -OperationMasterRole SchemaMaster,RIDMaster,InfrastructureMaster,DomainNamingMaster,PDCEmulator
+Move-ADDirectoryServerOperationMasterRole -Identity <Target-DC>  -OperationMasterRole 0,1,2,3,4
+ #Seize FSMO
+ Move-ADDirectoryServerOperationMasterRole -Identity coredc12 -OperationMasterRole SchemaMaster,RIDMaster,InfrastructureMaster,DomainNamingMaster,PDCEmulator -Force
+ Move-ADDirectoryServerOperationMasterRole -Identity target-dc -OperationMasterRole 0,1,2,3,4 -force
+
+ 
+
+ #METADATA CLEANUP
+
+ .\CleanupDcs.ps1 -action ListDCs
+ .\CleanupDcs.ps1 -action MetadataCleanup
+ .\CleanupDcs.ps1 -action DNSCleanup
+ \CleanupDcs.ps1 -action ResetTrustPwd
+
+ #FIXFSMO
+ Cscript fixfsmo.vbs DC=ForestDNSZones,DC=LCB,DC=LOCAL
+ Cscript fixfsmo.vbs DC=DomainDNSZones,DC=LCB,DC=LOCAL
+
+
+ Cscript fixfsmo.vbs DC=ForestDNSZones,DC=lcb,DC=com,DC=local	
+ Cscript fixfsmo.vbs DC=DomainDNSZones,DC=lcb,DC=com,DC=local
+
+#Raise RID Pool:
+$rid=get-adobject "CN=RID Manager$, CN=SYSTEM, DC, DC=LOCAL" –properties *
+$rid. rIDAvailablePool
+$rid. rIDAvailablePool=$rid. rIDAvailablePool+100000
+Set-adobject –instance $rid
+get-adobject "CN=RID Manager$, CN=SYSTEM, DC=LCB, DC=LOCAL" –properties *
+
+get-adobject "CN=RID Manager$, CN=SYSTEM, DC=TRT9A, DC=LOCAL" –properties *
+
+
+#InvalidateRIDPool
+
+DCDiag /test:ridmanager /v
+
+$Domain = New-Object System.DirectoryServices.DirectoryEntry
+$DomainSid = $Domain.objectSid
+$RootDSE = New-Object System.DirectoryServices.DirectoryEntry("LDAP://RootDSE")
+$RootDSE.UsePropertyCache = $false
+$RootDSE.Put("invalidateRidPool", $DomainSid.Value)
+$RootDSE.SetInfo()
+
+#New User
+New-ADUser -Name "Talib Idris2" -GivenName "Talib2" -Surname "Idris2" -SamAccountName "tidris2" -UserPrincipalName "tidris2@lcb.local" -Path "OU=lcb,DC=lcb,DC=local" -AccountPassword(Read-Host -AsSecureString "Type Password for User") -Enabled $true
+
+#Check Pool
+DCDiag /test:ridmanager /v 
+
+#Reset DC Password Twice
+reset-ComputerMachinePassword
+reset-ComputerMachinePassword
+
+#Reset the KRBTGT password twice
+net user krbtgt Password123456789 /domain
+net user krbtgt Password123456789 /domain
+
+#SET NTP on PDC
+w32tm /query /status
+
+w32tm /config /manualpeerlist:time.windows.com,0x8 /syncfromflags:manual /update 
+sc stop w32time
+sc start w32time
+
+#Reset Trust 
+
+#Reset Trust 
+netdom trust lcb.local /domain:child1.lcb.local /resetoneside /passwordT:password /userO:administrator /password0:*
+Netdom trust child1.lcb.local /domain:lcbl.local /resetoneside /passwordT:password /userO:administrator /password0:*
+
+
+#Promote NEW DC
+Add-WindowsFeature AD-Domain-Services, RSAT-AD-AdminCenter,RSAT-ADDS-Tools
+install-addsdomaincontroller -installdns -domainname lcb.local
+Repadmin /viewlist * 
+Repadmin /replsum
+
+#>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+#ADRES OBJECT RECOVERY
+#>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+#USERS
+Get-aduser -Identity user1
+Remove-ADUser -Identity user1
+DistinguishedName : CN=user1,OU=Users,OU=LCB,DC=lcb,DC=local
+Get-ADObject -ldapFilter:"(msDS-LastKnownRDN=*)" –IncludeDeletedObjects
+
+#GET OU
+get-ADOrganizationalUnit -Filter 'Name -like "*"' | Format-Table Name, DistinguishedName -A
+
+#Delete OU
+Get-ADOrganizationalUnit -Identity "OU=MKT,OU=Users,OU=LCB,DC=lcb,DC=local"| Set-ADObject -ProtectedFromAccidentalDeletion:$false -PassThru|
+Remove-ADOrganizationalUnit -identity "OU=MKT,OU=Users,OU=LCB,DC=lcb,DC=local" -recursive -Confirm:$false
+
+#Restore OU
+.\Restore-ADTree.ps1 -lastKnownRDN "usuarios" -Verbose
+
+
+#Remove DNS Simultation
+Remove-DnsServerZone  -PassThru "lcb.local"
+Get-ADobject -Server "<DomainController_fqdn>" -Filter {objectclass -eq "DNSZone"} -SearchBase "CN=MicrosoftDNS,DC=ForestDnsZones,DC=root,DC=contoso,DC=com" | Set-ADObject -ProtectedFromAccidentalDeletion $true
+Get-ADobject -Server "<DomainController_fqdn>" -Filter {objectclass -eq "DNSZone"} -SearchBase "CN=MicrosoftDNS,DC=DomainDnsZones,DC=root,DC=contoso,DC=com" | Set-ADObject -ProtectedFromAccidentalDeletion $true
+Get-ADobject -Server "<DomainController_fqdn>" -Filter {objectclass -eq "DNSZone"} -SearchBase "CN=MicrosoftDNS,CN=System,DC=root,DC=contoso,DC=com" | Set-ADObject -ProtectedFromAccidentalDeletion $true
+
+
+#DSRM Mode
+bcdedit /set safeboot dsrepair
+bcdedit /deletevalue safeboot
+
+#Restore authoritative DNS 
+Wbadmin get versions
+Version identifier: 05/21/2020-14:02
+wbadmin start systemstaterecovery -version:05/21/2020-14:02 -backuptarget:e:
+
+ntdsutil
+activate instance ntds
+authoritative restore
+restore subtree "DC=lcb.local,cn=microsoftdns,dc=domaindnszones,dc=lcb,dc=local"
+restore subtree "DC=lcb.local,cn=microsoftdns,dc=forestdnszones,dc=lcb,dc=local"
+
+
+#Backup GPO
+Backup-GPO -All -Path "C:\Temp\GPOBKP" -Comment "GPOS LCBIT" -Domain "lcb.local" -Server "dc1"
+Backup-GPO -name "testeGPo" -Path "C:\Temp\GPOBKP" -Comment "GPOS LCBIT" -Domain "lcb.local" -Server "dc1"
+Backup-Gpo -GUID fa4a9473-6e2a-4b87-ab78-175e68d97bde -Domain "contoso.com" -Server "DC1" -Path "\\Server1\GpoBackups"
+
+#Restore GPO 
+Restore-GPO –BackupId "ea3f7d3d-ea11-41bb-997d-b675b6739a70" -Path "C:\Temp\GPOBKP" -Domain lcb.local -Server "dc1"
+Restore-GPO –name "Desabilita Mapear Drive" -Path "C:\Temp\GPOBKP" -Domain lcb.local -Server "dc1"
+Restore-GPO -GUID fa4a9473-6e2a-4b87-ab78-175e68d97bde -Path "\\Server1\Backups"
+Restore-GPO -All -Domain "contoso.com" -Path "\\Server1\Backups"
+Backup-GPO -All -Path "C:\Temp\GPOBKP" -Comment "GPOS Backup" -Domain "contoso.local" -Server "dc1"
+
+Backup-GPO -All -Path "C:\Temp\GPOBKP" -Comment "GPOS Backup" -Domain "contoso.local" -Server "xxx"
+
+
+Restore-GPO –name "nomedaGPO" -Path "C:\Temp\GPOBKP" -Domain "contoso.local" -Server "xxx"
+
+
+Get-ADobject -Server "" -Filter {objectclass -eq "DNSZone"} -SearchBase "CN=MicrosoftDNS,DC=DomainDnsZones,DC=root,DC=contoso,DC=com" | Set-ADObject -ProtectedFromAccidentalDeletion $true
