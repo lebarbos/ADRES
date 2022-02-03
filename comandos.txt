@@ -180,6 +180,7 @@ Remove-DnsServerZone  -PassThru "lcb.local"
 Get-ADobject -Server "<DomainController_fqdn>" -Filter {objectclass -eq "DNSZone"} -SearchBase "CN=MicrosoftDNS,DC=ForestDnsZones,DC=root,DC=contoso,DC=com" | Set-ADObject -ProtectedFromAccidentalDeletion $true
 Get-ADobject -Server "<DomainController_fqdn>" -Filter {objectclass -eq "DNSZone"} -SearchBase "CN=MicrosoftDNS,DC=DomainDnsZones,DC=root,DC=contoso,DC=com" | Set-ADObject -ProtectedFromAccidentalDeletion $true
 Get-ADobject -Server "<DomainController_fqdn>" -Filter {objectclass -eq "DNSZone"} -SearchBase "CN=MicrosoftDNS,CN=System,DC=root,DC=contoso,DC=com" | Set-ADObject -ProtectedFromAccidentalDeletion $true
+Add-DnsServerPrimaryZone -Name lcb.local -ZoneFile lcb.local.dns -LoadExisting
 
 
 #DSRM Mode
