@@ -198,6 +198,7 @@ authoritative restore
 restore subtree "DC=lcb.local,cn=microsoftdns,dc=domaindnszones,dc=lcb,dc=local"
 restore subtree "DC=lcb.local,cn=microsoftdns,dc=forestdnszones,dc=lcb,dc=local"
 
+Add-DnsServerPrimaryZone -Name lcb.local -ZoneFile lcb.local.dns -LoadExisting
 
 #Backup GPO
 Backup-GPO -All -Path "C:\Temp\GPOBKP" -Comment "GPOS LCBIT" -Domain "lcb.local" -Server "dc1"
