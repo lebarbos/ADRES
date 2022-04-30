@@ -168,7 +168,7 @@ Get-ADObject -ldapFilter:"(msDS-LastKnownRDN=*)" –IncludeDeletedObjects
 get-ADOrganizationalUnit -Filter 'Name -like "*"' | Format-Table Name, DistinguishedName -A
 
 #Delete OU
-Get-ADOrganizationalUnit -Identity "OU=MKT,OU=Users,OU=LCB,DC=lcb,DC=local"| Set-ADObject -ProtectedFromAccidentalDeletion:$false -PassThru|
+Get-ADOrganizationalUnit -Identity "OU=MKT,OU=Users,OU=LCB,DC=lcb,DC=local"| Set-ADObject -ProtectedFromAccidentalDeletion:$true -PassThru|
 Remove-ADOrganizationalUnit -identity "OU=MKT,OU=Users,OU=LCB,DC=lcb,DC=local" -recursive -Confirm:$false
 
 #Restore OU
@@ -197,6 +197,8 @@ activate instance ntds
 authoritative restore
 restore subtree "DC=lcb.local,cn=microsoftdns,dc=domaindnszones,dc=lcb,dc=local"
 restore subtree "DC=lcb.local,cn=microsoftdns,dc=forestdnszones,dc=lcb,dc=local"
+
+restore subtree "DC=hm.local,cn=microsoftdns,dc=domaindnszones,dc=hm,dc=local"
 
 Add-DnsServerPrimaryZone -Name lcb.local -ZoneFile lcb.local.dns -LoadExisting
 
