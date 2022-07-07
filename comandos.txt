@@ -182,6 +182,10 @@ Get-ADobject -Server "<DomainController_fqdn>" -Filter {objectclass -eq "DNSZone
 Get-ADobject -Server "<DomainController_fqdn>" -Filter {objectclass -eq "DNSZone"} -SearchBase "CN=MicrosoftDNS,CN=System,DC=root,DC=contoso,DC=com" | Set-ADObject -ProtectedFromAccidentalDeletion $true
 Add-DnsServerPrimaryZone -Name lcb.local -ZoneFile lcb.local.dns -LoadExisting
 
+Change DSRM
+ ntdsutil
+ set dsrm password
+reset password on server null
 
 #DSRM Mode
 bcdedit /set safeboot dsrepair
