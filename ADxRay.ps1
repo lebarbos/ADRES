@@ -1,7 +1,7 @@
 ﻿######################################################################################################################################################################################
 #                                                                                                                                                                                    #
 #                                                                                                                                                                                    #
-#                                                                         Created by: Claudio Merola  and Leandro Barbosa                                                            #
+#                                                                         Created by: Claudio Merola and Leandro Barbosa                                                            #
 #                                                                                                                                                                                    #
 # This Script is based and inspired on Sukhija Vika's 'Active Directory Health Check' script (https://gallery.technet.microsoft.com/scriptcenter/Active-Directory-Health-709336cd),  #
 # the amazing Clint Huffman's 'Performance Analysis of Logs (PAL) tool' (https://github.com/clinthuffman/PAL) and Microsoft's Ned Pyle blogpost 'What does DCDIAG actually… do?'     #
